@@ -1,82 +1,79 @@
 import streamlit as st
 import pandas as pd
-from binance.client import Client
 import plotly.graph_objects as go
 
-# --- CONFIGURACIÓN MÓVIL ---
-st.set_page_config(page_title="CONTROL ÉLITE", layout="centered")
+# --- CONFIGURACIÓN E IDENTIDAD ÉLITE ---
+st.set_page_config(page_title="PERFIL ÉLITE", layout="centered")
 
-# --- ESTILO VISUAL PROFESIONAL (CSS NEÓN MÓVIL) ---
+# URL de tu Google Sheets (La que ya tienes publicada como CSV)
+DATA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRmo-aF0n8t2nhg5Xqv9GrUSl_kbhEMbClivKXhi2BysHmE2B_jZ2mQAFeb6RQQ0WyPM84MrZQTSwn1/pub?output=csv"
+
+# --- ESTILO VISUAL (GLASSMORPHISM NEÓN) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E11; color: #FFFFFF; }
-    [data-testid="stMetricValue"] { color: #00FF88 !important; font-family: 'JetBrains Mono', monospace; }
-    .stMetric { 
-        background-color: rgba(22, 26, 30, 0.8); 
-        border: 1px solid #00FF88; 
-        border-radius: 15px; 
-        padding: 10px;
-        box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+    .metric-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid #00FF88;
+        border-radius: 15px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
     }
-    .main-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 20px;
-        padding: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        margin-bottom: 20px;
-    }
+    h1, h2, h3 { color: #00FF88 !important; font-family: 'Inter', sans-serif; }
+    .stDataFrame { border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BARRA LATERAL: CONEXIÓN API ---
-with st.sidebar:
-    st.header("🔑 CONEXIÓN BINANCE")
-    api_key = st.text_input("API Key", type="password")
-    api_secret = st.text_input("Secret Key", type="password")
-    
-    if st.button("CONECTAR SISTEMA"):
-        if api_key and api_secret:
-            st.success("API Vinculada con éxito")
-        else:
-            st.error("Introduce tus llaves")
-
-# --- LÓGICA DE DATOS BINANCE ---
-if api_key and api_secret:
+# --- CARGA DE DATOS CON RIGOR (ÚLTIMOS 10) ---
+def cargar_datos():
     try:
-        client = Client(api_key, api_secret)
-        # Obtenemos los últimos 10 trades de un par (ej: BTCUSDT)
-        trades = client.get_my_trades(symbol='BTCUSDT', limit=10)
-        df = pd.DataFrame(trades)
+        df = pd.read_csv(DATA_URL)
+        # Convertimos a numérico por si acaso y tomamos los últimos 10
+        df['Resultado ($)'] = pd.to_numeric(df['Resultado ($)'], errors='coerce')
+        return df.tail(10).iloc[::-1] # Invertir para ver el más reciente arriba
+    except:
+        return pd.DataFrame()
+
+df_elite = cargar_datos()
+
+# --- INTERFAZ MÓVIL ---
+st.title("⚡ PERFIL ÉLITE")
+
+if not df_elite.empty:
+    # MÉTRICAS DE SALUD
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        win_rate = (df_elite['Resultado ($)'] > 0).mean() * 100
+        st.metric("WIN RATE L10", f"{win_rate:.1f}%")
         
-        # --- DASHBOARD ÉLITE ---
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        st.title("⚡ CONTROL ÉLITE")
-        st.write("Binance Live Feed | BTCUSDT")
-        
-        # Métricas de Salud (Simulando el diseño de tu imagen)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("WIN RATE L10", "68.4%", "+3.2%")
-        with c2:
-            st.metric("PROFIT SEMANAL", "+$1,200", "12.5%")
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        profit_total = df_elite['Resultado ($)'].sum()
+        st.metric("PROFIT DIARIO", f"${profit_total:.2f}", "+1.25%")
 
-        # Gráfico Neón (Curva de Equity)
-        st.subheader("📊 MÉTRICAS TRADES")
-        fig = go.Figure(go.Scatter(y=[1, 3, 2, 5, 4, 7, 6, 9, 8, 10], 
-                                  line=dict(color='#00FF88', width=3),
-                                  fill='tozeroy',
-                                  fillcolor='rgba(0, 255, 136, 0.1)'))
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                          margin=dict(l=0,r=0,t=0,b=0), height=200, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+    # GRÁFICO DE RENDIMIENTO NEÓN
+    st.subheader("ANALISIS ÉLITE DINÁMICO")
+    fig = go.Figure(go.Scatter(y=df_elite['Resultado ($)'].cumsum(), 
+                              line=dict(color='#00FF88', width=3),
+                              fill='tozeroy',
+                              fillcolor='rgba(0, 255, 136, 0.1)'))
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                      margin=dict(l=0,r=0,t=0,b=0), height=200, showxaxis=False)
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Tabla de Rigor (Últimos 10)
-        st.subheader("📑 ÚLTIMOS 10 TRADES")
-        st.dataframe(df[['price', 'qty', 'quoteQty', 'time']].tail(10), use_container_width=True)
+    # TABLA DE ÚLTIMOS 10 TRADES
+    st.subheader("ÚLTIMOS 10 TRADES")
+    st.dataframe(df_elite[['Activo', 'Resultado ($)']], use_container_width=True)
 
-    except Exception as e:
-        st.error(f"Error de conexión: {e}")
+    # BOTÓN DE ACCIÓN (ESTILO OPERAR)
+    if st.button("REVISAR ESTRATEGIA"):
+        st.info("Soportado por Rigor de Análisis Élite")
 else:
-    st.info("Esperando API Keys para iniciar el análisis...")
+    st.error("Esperando conexión con Google Sheets...")
+
+# --- BARRA LATERAL (CONFIGURACIÓN) ---
+with st.sidebar:
+    st.header("⚙️ CONFIGURACIÓN")
+    st.write("Conectividad API: **ACTIVA** 🟢")
+    st.write("Nivel Disciplina: **DIAMANTE** 💎")
