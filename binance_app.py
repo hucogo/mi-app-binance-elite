@@ -4,101 +4,74 @@ from binance.client import Client
 import plotly.graph_objects as go
 import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="PERFIL ÉLITE LIVE", layout="centered")
-
-# --- DISEÑO VISUAL "PERFIL ÉLITE" ---
+# --- IDENTIDAD ÉLITE ---
+st.set_page_config(page_title="PERFIL ÉLITE", layout="centered")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E11; color: #FFFFFF; }
     .stTextInput>div>div>input { background-color: #161A1E; color: #00FF88; border: 1px solid #00FF88; }
-    div[data-testid="stMetric"] { background: rgba(0, 255, 136, 0.05); border: 1px solid #00FF88; border-radius: 15px; padding: 10px; }
-    h1, h2, h3 { color: #00FF88 !important; text-align: center; font-family: 'Inter'; }
-    .stButton>button { background-color: #00FF88; color: #0B0E11; font-weight: bold; width: 100%; border-radius: 10px; border: none; height: 3em; }
-    .stButton>button:hover { background-color: #00cc6e; color: white; }
+    div[data-testid="stMetric"] { background: rgba(0, 255, 136, 0.05); border: 1px solid #00FF88; border-radius: 15px; }
+    h1 { color: #00FF88 !important; text-align: center; }
+    .stButton>button { background-color: #00FF88; color: #0B0E11; font-weight: bold; width: 100%; border-radius: 10px; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🛡️ CONTROL ÉLITE")
 
-# --- INTERFAZ DE ENTRADA ---
+# --- ENTRADA DE DATOS ---
 with st.container():
-    st.markdown("### 🔑 ACCESO API BINANCE")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        api_key = st.text_input("API Key", type="password", placeholder="Pega tu Key")
-    with col_b:
-        api_secret = st.text_input("Secret Key", type="password", placeholder="Pega tu Secret")
-    
-    par_busqueda = st.selectbox("Par a analizar (Rigor L10)", ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"])
-    conectar = st.button("EXTRAER INFORMACIÓN ÉLITE")
+    api_k = st.text_input("API Key", type="password").strip()
+    api_s = st.text_input("Secret Key", type="password").strip()
+    par = st.selectbox("Activo", ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    btn = st.button("SOLTAR INFORMACIÓN COMPLETA")
 
-# --- LÓGICA DE CONEXIÓN Y EXTRACCIÓN ---
-if conectar:
-    if not api_key or not api_secret:
-        st.warning("⚠️ Se requieren ambas llaves para iniciar el análisis.")
+if btn:
+    if api_k and api_s:
+        try:
+            # 1. SINCRONIZACIÓN PREVIA: Creamos un cliente temporal para obtener la hora
+            temp_client = Client(api_k, api_s)
+            temp_client.API_URL = 'https://api1.binance.com/api'
+            s_time = temp_client.get_server_time()['serverTime']
+            
+            # 2. CLIENTE DEFINITIVO: Ajustamos el offset manualmente
+            client = Client(api_k, api_s)
+            client.API_URL = 'https://api1.binance.com/api'
+            client.timestamp_offset = s_time - int(time.time() * 1000)
+            
+            # 3. EXTRACCIÓN DE DATOS (RIGOR L10)
+            trades = client.get_my_trades(symbol=par, limit=10, recvWindow=60000)
+            df = pd.DataFrame(trades)
+
+            if not df.empty:
+                # Convertir datos a números
+                df['price'] = pd.to_numeric(df['price'])
+                df['qty'] = pd.to_numeric(df['qty'])
+                df['quoteQty'] = pd.to_numeric(df['quoteQty'])
+                df['commission'] = pd.to_numeric(df['commission'])
+                
+                # Cálculo de "Ganancia Estimada" (Basada en volumen y tipo)
+                # Para un reporte real, Binance no da el PNL directo en trades, se calcula por diferencia
+                df['Tipo'] = df['isBuyer'].apply(lambda x: 'COMPRA' if x else 'VENTA')
+                
+                # DASHBOARD VISUAL
+                c1, c2 = st.columns(2)
+                c1.metric("VOLUMEN TOTAL (L10)", f"${df['quoteQty'].sum():.2f}")
+                c2.metric("COMISIONES PAGADAS", f"{df['commission'].sum():.4f}")
+
+                # Gráfico de Precios
+                fig = go.Figure(go.Scatter(y=df['price'], mode='lines+markers', line=dict(color='#00FF88', width=3)))
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=250,
+                                  xaxis=dict(showgrid=False), yaxis=dict(gridcolor='rgba(255,255,255,0.05)'))
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # INFO DETALLADA SIN CAMBIOS
+                st.subheader("📋 REPORTE DETALLADO DE OPERACIONES")
+                st.dataframe(df[['time', 'Tipo', 'price', 'qty', 'quoteQty', 'commission']], use_container_width=True)
+            else:
+                st.info("No se encontraron trades recientes para analizar.")
+                
+        except Exception as e:
+            st.error(f"Error Crítico de Sincronización: {e}")
+            st.warning("Verifica que tu PC tenga la 'Hora Automática' activada.")
     else:
-        with st.status("Conectando con Binance Global...", expanded=True) as status:
-            try:
-                # CORRECCIÓN DE UBICACIÓN: Usamos endpoints alternativos que suelen evadir bloqueos de centros de datos
-                client = Client(api_key, api_secret)
-                client.API_URL = 'https://api1.binance.com/api' # Endpoint alternativo 1
-                
-                # Test de conexión rápido (obtenemos saldo de la moneda base)
-                asset = par_busqueda.replace("USDT", "")
-                balance = client.get_asset_balance(asset=asset)
-                
-                # Extracción de los últimos 10 trades (Rigor L10)
-                st.write("Buscando últimos 10 juegos/trades...")
-                trades = client.get_my_trades(symbol=par_busqueda, limit=10)
-                df = pd.DataFrame(trades)
-                
-                status.update(label="✅ Conexión Exitosa", state="complete", expanded=False)
-
-                if not df.empty:
-                    # PROCESAMIENTO DE DATOS
-                    df['price'] = pd.to_numeric(df['price'])
-                    df['qty'] = pd.to_numeric(df['qty'])
-                    df['quoteQty'] = pd.to_numeric(df['quoteQty']) # Total en dólares
-                    df['time'] = pd.to_datetime(df['time'], unit='ms')
-
-                    # DASHBOARD DE RESULTADOS
-                    st.markdown("---")
-                    st.subheader(f"MÉTRICAS: {par_busqueda}")
-                    
-                    m1, m2 = st.columns(2)
-                    m1.metric("SALDO DISPONIBLE", f"{float(balance['free']):.4f} {asset}")
-                    m2.metric("VOLUMEN TOTAL L10", f"${df['quoteQty'].sum():.2f}")
-
-                    # GRÁFICO DINÁMICO
-                    st.markdown("### ANÁLISIS DE PRECIO (L10)")
-                    fig = go.Figure(go.Scatter(
-                        x=df['time'], y=df['price'],
-                        mode='lines+markers',
-                        line=dict(color='#00FF88', width=3),
-                        marker=dict(size=10, color='#FFFFFF', line=dict(width=2, color='#00FF88')),
-                        fill='tozeroy',
-                        fillcolor='rgba(0, 255, 136, 0.1)'
-                    ))
-                    fig.update_layout(
-                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                        margin=dict(l=0,r=0,t=0,b=0), height=250,
-                        xaxis=dict(showgrid=False, font=dict(color="white")),
-                        yaxis=dict(gridcolor='rgba(255,255,255,0.05)', font=dict(color="white"))
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # TABLA DE RIGOR
-                    st.subheader("📋 BITÁCORA DETALLADA")
-                    df_final = df[['time', 'price', 'qty', 'quoteQty', 'isBuyer']].copy()
-                    df_final.columns = ['Fecha', 'Precio', 'Cantidad', 'Total USD', 'Es Compra']
-                    st.dataframe(df_final, use_container_width=True)
-                else:
-                    st.info(f"No se encontraron trades recientes para {par_busqueda}.")
-
-            except Exception as e:
-                st.error(f"Error de Binance: {e}")
-                st.markdown("""> **Nota Élite:** Si el error de 'Restricted Location' persiste, Binance ha bloqueado totalmente la IP de este servidor en la nube. La solución definitiva es ejecutar este mismo código **localmente** en tu PC para usar tu internet personal.""")
-
-else:
-    st.markdown("<br><p style='text-align:center; color:#888;'>Esperando credenciales para soltar la información...</p>", unsafe_allow_html=True)
+        st.warning("⚠️ Introduce tus llaves.")
