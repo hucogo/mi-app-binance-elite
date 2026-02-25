@@ -25,55 +25,74 @@ st.markdown("""
     }
     .stButton>button {
         background: linear-gradient(135deg, #00FF88 0%, #00cc6e 100%);
-        color: #0B0E11;
-        font-weight: 800;
-        height: 65px;
-        border-radius: 15px;
-        font-size: 20px;
-        border: none;
+        color: #0B0E11; font-weight: 800; height: 60px; border-radius: 15px; border: none;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATOS DE RIGOR (FUERA DE LA FUNCIÓN PARA EVITAR EL ERROR) ---
-precios_lista = [96200, 96350, 96100, 96480, 96600, 96550, 96800, 96720, 96950, 97100]
+# --- 2. DATOS GLOBALES (OBLIGATORIOS PARA EL GRÁFICO) ---
+# Definimos los precios aquí afuera para que NUNCA fallen
+precios_grafico = [96200, 96350, 96100, 96480, 96600, 96550, 96800, 96720, 96950, 97100]
+horas_grafico = [(datetime.now() - timedelta(minutes=(10-i)*15)).strftime("%H:%M") for i in range(10)]
 
-def generar_datos_app():
-    ahora = datetime.now()
+def generar_datos_tabla():
     datos = []
     for i in range(10):
-        p_actual = precios_lista[i]
         datos.append({
-            "Hora": (ahora - timedelta(minutes=(10-i)*15)).strftime("%H:%M"),
+            "Hora": horas_grafico[i],
             "Op": "BUY" if i % 2 == 0 else "SELL",
-            "Precio": f"{p_actual:,.0f}",
+            "Precio": f"{precios_grafico[i]:,}",
             "Profit": f"+{round(1.5 + (i*0.5), 1)}%"
         })
     return pd.DataFrame(datos)
 
-df_app = generar_datos_app()
+df_app = generar_datos_tabla()
 
 # --- 3. INTERFAZ ---
 st.markdown("<h1 style='text-align: center; color: #00FF88;'>🛡️ CONTROL ÉLITE</h1>", unsafe_allow_html=True)
 
-with st.container():
-    st.markdown('<div class="app-card">', unsafe_allow_html=True)
-    st.text_input("API KEY", value="PRUEBA_MÓVIL_ACTIVA", disabled=True)
-    st.text_input("SECRET KEY", value="••••••••••••", type="password", disabled=True)
-    if st.button("SOLTAR INFORMACIÓN"):
-        st.balloons()
-    st.markdown('</div>', unsafe_allow_html=True)
+# Acceso
+st.markdown('<div class="app-card">', unsafe_allow_html=True)
+st.text_input("API KEY", value="PRUEBA_MÓVIL_ACTIVA", disabled=True)
+st.text_input("SECRET KEY", value="••••••••••••", type="password", disabled=True)
+st.button("SOLTAR INFORMACIÓN")
+st.markdown('</div>', unsafe_allow_html=True)
 
+# Métricas
 c1, c2 = st.columns(2)
-with c1:
-    st.metric("GANANCIA L10", "$1,842.20", "+14.5%")
-with c2:
-    st.metric("VOLUMEN", "$64,250", "AUDITADO")
+c1.metric("GANANCIA L10", "$1,842.20", "+14.5%")
+c2.metric("VOLUMEN", "$64,250", "AUDITADO")
 
+# --- LA CURVA DE TRADES (CORREGIDA) ---
 st.markdown("### 📈 CURVA DE TRADES")
-# Aquí usamos precios_lista que ahora sí está definida para el gráfico
-fig = go.Figure(go.Scatter(
-    x=df_app['Hora'], y=precios_lista,
-    mode='lines+markers', line=dict(color='#00FF88', width=5, shape='spline'),
-    fill='tozeroy', fillcolor='rgba(0, 255, 136, 0.05)'
+
+# Creamos el objeto figura explícitamente
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=horas_grafico, 
+    y=precios_grafico,
+    mode='lines+markers',
+    line=dict(color='#00FF88', width=4, shape='spline'),
+    marker=dict(size=8, color='#00FF88'),
+    fill='tozeroy',
+    fillcolor='rgba(0, 255, 136, 0.1)'
 ))
+
+fig.update_layout(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    margin=dict(l=5, r=5, t=5, b=5),
+    height=200,
+    xaxis=dict(visible=False),
+    yaxis=dict(visible=False, range=[min(precios_grafico)-500, max(precios_grafico)+500])
+)
+
+# Renderizado forzado para móvil
+st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+# Tabla
+st.markdown("### 📋 ÚLTIMOS 10 JUEGOS")
+st.dataframe(df_app, use_container_width=True)
+
+st.markdown("---")
+st.caption("📱 CONTROL ÉLITE | Rigor L10")
